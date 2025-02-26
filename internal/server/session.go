@@ -11,15 +11,17 @@ import (
 )
 
 type CreateSessionRequest struct {
-	StartTime time.Time `json:"start_time" binding:"required"`
-	Duration  int64     `json:"duration" binding:"required"`
-	Records   []struct {
-		Text      string    `json:"text"`
-		GitLink   string    `json:"git_link,omitempty"`
-		Files     []File    `json:"files,omitempty"`
-		AudioURL  string    `json:"audio_url,omitempty"`
-		Timestamp time.Time `json:"timestamp"`
-	} `json:"records"`
+	StartTime string      `json:"start_time" binding:"required"`
+	Duration  int64       `json:"duration" binding:"required"`
+	Records   []RecordDTO `json:"records"`
+}
+
+type RecordDTO struct {
+	Text      string   `json:"text"`
+	GitLink   string   `json:"git_link,omitempty"`
+	Files     []File   `json:"files,omitempty"`
+	AudioURL  string   `json:"audio_url,omitempty"`
+	Timestamp any      `json:"timestamp"` // Can be string or number
 }
 
 type UpdateSessionRequest struct {
@@ -61,14 +63,15 @@ func (s *Server) handleCreateSession() gin.HandlerFunc {
 			return
 		}
 
-		if req.StartTime.IsZero() {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time"})
+		startTime, err := time.Parse(time.RFC3339, req.StartTime)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time format"})
 			return
 		}
 
 		session := &domain.Session{
 			ProjectID: projectID,
-			StartTime: req.StartTime,
+			StartTime: startTime,
 			Duration:  req.Duration,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
@@ -76,11 +79,36 @@ func (s *Server) handleCreateSession() gin.HandlerFunc {
 
 		// Create records
 		for _, r := range req.Records {
+			var timestamp time.Time
+			
+			// Handle timestamp which can be string or number
+			switch v := r.Timestamp.(type) {
+			case string:
+				// Try to parse as RFC3339
+				t, err := time.Parse(time.RFC3339, v)
+				if err != nil {
+					// Try to parse as RFC3339Nano
+					t, err = time.Parse(time.RFC3339Nano, v)
+					if err != nil {
+						timestamp = time.Now() // Fallback to current time
+					} else {
+						timestamp = t
+					}
+				} else {
+					timestamp = t
+				}
+			case float64:
+				// Handle timestamp as milliseconds since epoch
+				timestamp = time.Unix(0, int64(v)*int64(time.Millisecond))
+			default:
+				timestamp = time.Now() // Fallback to current time
+			}
+
 			record := &domain.Record{
 				Text:      r.Text,
 				GitLink:   r.GitLink,
 				AudioURL:  r.AudioURL,
-				Timestamp: r.Timestamp,
+				Timestamp: timestamp,
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			}
@@ -105,9 +133,10 @@ func (s *Server) handleCreateSession() gin.HandlerFunc {
 		fmt.Printf("Creating session: %+v\n", session)
 		fmt.Printf("Records: %+v\n", session.Records)
 
-		if err := s.sessionRepo.Create(c, session); err != nil {
-			fmt.Printf("Error saving session: %v\n", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		// Create the session
+		err = s.sessionRepo.Create(c, session)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create session: %v", err)})
 			return
 		}
 

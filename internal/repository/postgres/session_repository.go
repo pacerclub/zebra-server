@@ -24,31 +24,24 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 		return tx.Error
 	}
 
-	// Ensure clean state
-	session.ID = uuid.UUID{} // Zero out any existing UUID
-	if session.Records == nil {
-		session.Records = make([]domain.Record, 0)
+	// Set session ID if not set
+	if session.ID == uuid.Nil {
+		session.ID = uuid.New()
 	}
+
+	// Set timestamps
+	now := time.Now()
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = now
+	}
+	session.UpdatedAt = now
 
 	// Set end time if not set
 	if session.EndTime.IsZero() {
-		session.EndTime = time.Now()
-	}
-
-	for i := range session.Records {
-		session.Records[i].ID = uuid.UUID{}
-		session.Records[i].SessionID = uuid.UUID{}
-		if session.Records[i].Files == nil {
-			session.Records[i].Files = make([]domain.File, 0)
-		}
-		for j := range session.Records[i].Files {
-			session.Records[i].Files[j].ID = uuid.UUID{}
-			session.Records[i].Files[j].RecordID = uuid.UUID{}
-		}
+		session.EndTime = now
 	}
 
 	// Create the session first
-	session.ID = uuid.New()
 	if err := tx.Create(session).Error; err != nil {
 		tx.Rollback()
 		return err
@@ -57,8 +50,21 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 	// Create records one by one
 	for i := range session.Records {
 		record := &session.Records[i]
+
+		// Always generate a new ID for records
 		record.ID = uuid.New()
 		record.SessionID = session.ID
+		
+		// Set timestamps
+		if record.CreatedAt.IsZero() {
+			record.CreatedAt = now
+		}
+		record.UpdatedAt = now
+
+		// Set timestamp if not set
+		if record.Timestamp.IsZero() {
+			record.Timestamp = now
+		}
 
 		if err := tx.Create(record).Error; err != nil {
 			tx.Rollback()
@@ -68,8 +74,16 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 		// Create files for this record
 		for j := range record.Files {
 			file := &record.Files[j]
+
+			// Always generate a new ID for files
 			file.ID = uuid.New()
 			file.RecordID = record.ID
+			
+			// Set timestamps
+			if file.CreatedAt.IsZero() {
+				file.CreatedAt = now
+			}
+			file.UpdatedAt = now
 
 			if err := tx.Create(file).Error; err != nil {
 				tx.Rollback()

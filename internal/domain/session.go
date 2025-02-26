@@ -24,6 +24,7 @@ type Record struct {
 	GitLink   string    `json:"git_link,omitempty"`
 	Files     []File    `json:"files" gorm:"foreignKey:RecordID"`
 	AudioURL  string    `json:"audio_url,omitempty"`
+	AudioData []byte    `json:"-" gorm:"type:bytea"` // Audio data stored in database
 	Timestamp time.Time `json:"timestamp"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -36,6 +37,7 @@ type File struct {
 	URL       string    `json:"url"`
 	Type      string    `json:"type"`
 	Size      int64     `json:"size"`
+	Data      []byte    `json:"-" gorm:"type:bytea"` // File data stored in database
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
