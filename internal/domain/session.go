@@ -17,27 +17,29 @@ type Session struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// Record represents a record of a session
 type Record struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
-	SessionID uuid.UUID `json:"session_id" gorm:"type:uuid"`
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	SessionID uuid.UUID `json:"session_id" gorm:"type:uuid;not null"`
 	Text      string    `json:"text"`
-	GitLink   string    `json:"git_link,omitempty"`
+	GitLink   string    `json:"git_link"`
+	AudioURL  string    `json:"audio_url"`
+	AudioData []byte    `json:"audio_data" gorm:"type:bytea"` // Actual audio data
+	Timestamp time.Time `json:"timestamp" gorm:"not null;default:now()"`
 	Files     []File    `json:"files" gorm:"foreignKey:RecordID"`
-	AudioURL  string    `json:"audio_url,omitempty"`
-	AudioData []byte    `json:"-" gorm:"type:bytea"` // Audio data stored in database
-	Timestamp time.Time `json:"timestamp"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at" gorm:"not null;default:now()"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"not null;default:now()"`
 }
 
+// File represents a file uploaded by a user
 type File struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
-	RecordID  uuid.UUID `json:"record_id" gorm:"type:uuid"`
-	Name      string    `json:"name"`
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	RecordID  uuid.UUID `json:"record_id" gorm:"type:uuid;not null"`
+	Name      string    `json:"name" gorm:"not null"`
 	URL       string    `json:"url"`
 	Type      string    `json:"type"`
 	Size      int64     `json:"size"`
-	Data      []byte    `json:"-" gorm:"type:bytea"` // File data stored in database
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Data      []byte    `json:"data" gorm:"type:bytea"` // Actual file data
+	CreatedAt time.Time `json:"created_at" gorm:"not null;default:now()"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"not null;default:now()"`
 }

@@ -38,3 +38,13 @@ type ProjectRepository interface {
 	Update(ctx context.Context, project *domain.Project) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
+
+type SessionRepository interface {
+	Create(ctx context.Context, projectID uuid.UUID, session *domain.Session) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Session, error)
+	GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]domain.Session, error)
+	Update(ctx context.Context, session *domain.Session) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	GetFileByID(ctx context.Context, id uuid.UUID) (*domain.File, error)
+	GetRecordByID(ctx context.Context, id uuid.UUID) (*domain.Record, error)
+}

@@ -38,5 +38,22 @@ services:
       postgres:
         condition: service_healthy
 
+  fileserver:
+    build:
+      context: .
+      dockerfile: ./cmd/fileserver/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=zebra
+      - DB_PORT=5432
+      - GIN_MODE=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:

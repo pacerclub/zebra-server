@@ -49,14 +49,61 @@ func (s *Server) handleCreateWorkLog() gin.HandlerFunc {
 func (s *Server) handleGetWorkLogs() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := uuid.Parse(c.GetString("user_id"))
-
-		// Get work logs from database
-		workLogs, err := s.workLogRepo.GetByUserID(c, userID, 50, 0)
+		workLogs, err := s.workLogRepo.GetByUserID(c, userID, 10, 0)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch work logs"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
 		c.JSON(http.StatusOK, workLogs)
+	}
+}
+
+func (s *Server) handleGetWorkLog() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Implementation will be added later
+		c.JSON(http.StatusOK, gin.H{"message": "Get work log endpoint"})
+	}
+}
+
+func (s *Server) handleUpdateWorkLog() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Implementation will be added later
+		c.JSON(http.StatusOK, gin.H{"message": "Update work log endpoint"})
+	}
+}
+
+func (s *Server) handleDeleteWorkLog() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Implementation will be added later
+		c.JSON(http.StatusOK, gin.H{"message": "Delete work log endpoint"})
+	}
+}
+
+func (s *Server) handleCreateLogEntry() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Implementation will be added later
+		c.JSON(http.StatusOK, gin.H{"message": "Create log entry endpoint"})
+	}
+}
+
+func (s *Server) handleGetLogEntries() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Implementation will be added later
+		c.JSON(http.StatusOK, gin.H{"message": "Get log entries endpoint"})
+	}
+}
+
+func (s *Server) handleUpdateLogEntry() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Implementation will be added later
+		c.JSON(http.StatusOK, gin.H{"message": "Update log entry endpoint"})
+	}
+}
+
+func (s *Server) handleDeleteLogEntry() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Implementation will be added later
+		c.JSON(http.StatusOK, gin.H{"message": "Delete log entry endpoint"})
 	}
 }

@@ -2,38 +2,50 @@ package server
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ZigaoWang/zebra-server/internal/config"
-	"github.com/ZigaoWang/zebra-server/internal/middleware"
+	"github.com/ZigaoWang/zebra-server/internal/repository"
 	"github.com/ZigaoWang/zebra-server/internal/repository/postgres"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 type Server struct {
-	config      *config.Config
 	router      *gin.Engine
-	userRepo    *postgres.UserRepository
-	workLogRepo *postgres.WorkLogRepository
-	projectRepo *postgres.ProjectRepository
-	sessionRepo *postgres.SessionRepository
+	cfg         *config.Config
+	sessionRepo repository.SessionRepository
+	projectRepo repository.ProjectRepository
+	userRepo    repository.UserRepository
+	workLogRepo repository.WorkLogRepository
 }
 
 func NewServer(cfg *config.Config, db *gorm.DB) *Server {
-	server := &Server{
-		config:      cfg,
-		router:      gin.Default(),
-		userRepo:    postgres.NewUserRepository(db),
-		workLogRepo: postgres.NewWorkLogRepository(db),
-		projectRepo: postgres.NewProjectRepository(db),
-		sessionRepo: postgres.NewSessionRepository(db),
-	}
-
 	// Set gin mode
 	gin.SetMode(cfg.Server.Mode)
 
-	// Setup middleware
-	server.router.Use(middleware.CORS())
+	// Create router
+	router := gin.Default()
+
+	// Setup CORS
+	server := &Server{
+		router: router,
+		cfg:    cfg,
+	}
+	server.SetupCORS()
+
+	// Initialize repositories
+	sessionRepo := postgres.NewSessionRepository(db)
+	projectRepo := postgres.NewProjectRepository(db)
+	userRepo := postgres.NewUserRepository(db)
+	workLogRepo := postgres.NewWorkLogRepository(db)
+
+	// Create server instance
+	server.sessionRepo = sessionRepo
+	server.projectRepo = projectRepo
+	server.userRepo = userRepo
+	server.workLogRepo = workLogRepo
 
 	// Setup routes
 	server.setupRoutes()
@@ -41,90 +53,74 @@ func NewServer(cfg *config.Config, db *gorm.DB) *Server {
 	return server
 }
 
-func (s *Server) setupRoutes() {
-	// Public routes
-	s.router.POST("/api/v1/auth/register", s.handleRegister())
-	s.router.POST("/api/v1/auth/login", s.handleLogin())
-
-	// Protected routes
-	authorized := s.router.Group("/api/v1")
-	authorized.Use(s.authMiddleware())
-	{
-		// Work logs
-		authorized.POST("/logs", s.handleCreateWorkLog())
-		authorized.GET("/logs", s.handleGetWorkLogs())
-		authorized.GET("/logs/:id", s.handleGetWorkLog())
-		authorized.PUT("/logs/:id", s.handleUpdateWorkLog())
-		authorized.DELETE("/logs/:id", s.handleDeleteWorkLog())
-
-		// Log entries
-		authorized.POST("/logs/:id/entries", s.handleCreateLogEntry())
-		authorized.GET("/logs/:id/entries", s.handleGetLogEntries())
-		authorized.PUT("/logs/:id/entries/:entryId", s.handleUpdateLogEntry())
-		authorized.DELETE("/logs/:id/entries/:entryId", s.handleDeleteLogEntry())
-
-		// Projects
-		authorized.POST("/projects", s.handleCreateProject())
-		authorized.GET("/projects", s.handleGetProjects())
-		authorized.GET("/projects/:id", s.handleGetProject())
-		authorized.PUT("/projects/:id", s.handleUpdateProject())
-		authorized.DELETE("/projects/:id", s.handleDeleteProject())
-
-		// Sessions
-		authorized.POST("/projects/:id/sessions", s.handleCreateSession())
-		authorized.GET("/projects/:id/sessions", s.handleGetSessions())
-		authorized.PUT("/projects/:id/sessions/:sessionId", s.handleUpdateSession())
-		authorized.DELETE("/projects/:id/sessions/:sessionId", s.handleDeleteSession())
-
-		// User
-		authorized.GET("/user/profile", s.handleGetProfile())
-		authorized.PUT("/user/profile", s.handleUpdateProfile())
+func (s *Server) SetupCORS() {
+	corsConfig := cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
 	}
+	s.router.Use(cors.New(corsConfig))
+}
+
+func (s *Server) setupRoutes() {
+	// Debug output
+	fmt.Println("Setting up routes...")
+
+	// Public routes
+	s.router.POST("/api/v1/users/register", s.handleRegister())
+	s.router.POST("/api/v1/users/login", s.handleLogin())
+
+	// Direct file and audio access routes (outside of API group)
+	s.router.GET("/files/:id", s.handleGetFile())
+	s.router.GET("/audio/:id", s.handleGetAudio())
+
+	// Protected API v1 group
+	v1 := s.router.Group("/api/v1")
+	v1.Use(s.authMiddleware())
+	{
+		// Projects
+		projects := v1.Group("/projects")
+		{
+			projects.GET("", s.handleGetProjects())
+			projects.POST("", s.handleCreateProject())
+			projects.GET("/:id", s.handleGetProject())
+			projects.PUT("/:id", s.handleUpdateProject())
+			projects.DELETE("/:id", s.handleDeleteProject())
+
+			// Sessions for a project
+			sessions := projects.Group("/:id/sessions")
+			{
+				sessions.GET("", s.handleGetSessions())
+				sessions.POST("", s.handleCreateSession())
+				sessions.PUT("/:sessionId", s.handleUpdateSession())
+				sessions.DELETE("/:sessionId", s.handleDeleteSession())
+			}
+		}
+
+		// Work logs
+		logs := v1.Group("/logs")
+		{
+			logs.GET("", s.handleGetWorkLogs())
+			logs.POST("", s.handleCreateWorkLog())
+			logs.GET("/:id", s.handleGetWorkLog())
+			logs.PUT("/:id", s.handleUpdateWorkLog())
+			logs.DELETE("/:id", s.handleDeleteWorkLog())
+		}
+	}
+
+	// Debug output - print all routes
+	routes := s.router.Routes()
+	fmt.Println("=== ALL REGISTERED ROUTES ===")
+	for _, route := range routes {
+		fmt.Printf("Method: %s, Path: %s\n", route.Method, route.Path)
+	}
+	fmt.Println("============================")
 }
 
 func (s *Server) Run() error {
-	return s.router.Run(fmt.Sprintf(":%s", s.config.Server.Port))
-}
-
-// Handler function declarations are in their respective files:
-// - auth.go: handleRegister, handleLogin, authMiddleware
-// - worklog.go: handleCreateWorkLog, handleGetWorkLogs, etc.
-// - project.go: handleCreateProject, handleGetProjects, etc.
-
-func (s *Server) handleGetWorkLog() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-func (s *Server) handleUpdateWorkLog() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-func (s *Server) handleDeleteWorkLog() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-func (s *Server) handleCreateLogEntry() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-func (s *Server) handleGetLogEntries() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-func (s *Server) handleUpdateLogEntry() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-func (s *Server) handleDeleteLogEntry() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-
-
-func (s *Server) handleGetProfile() gin.HandlerFunc {
-	return func(c *gin.Context) {}
-}
-
-func (s *Server) handleUpdateProfile() gin.HandlerFunc {
-	return func(c *gin.Context) {}
+	// Start the main server
+	return s.router.Run(fmt.Sprintf(":%s", s.cfg.Server.Port))
 }

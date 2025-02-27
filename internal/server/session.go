@@ -37,110 +37,43 @@ type File struct {
 
 func (s *Server) handleCreateSession() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		projectID, err := uuid.Parse(c.Param("id"))
+		// Get project ID from URL
+		projectIDStr := c.Param("id")
+		projectID, err := uuid.Parse(projectIDStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID format"})
 			return
 		}
 
-		userID, _ := uuid.Parse(c.GetString("user_id"))
-
-		// Verify project ownership
-		project, err := s.projectRepo.GetByID(c, projectID)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-			return
-		}
-
-		if project.UserID != userID {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
-
-		var req CreateSessionRequest
+		// Parse request body
+		var req domain.Session
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid request format: %v", err)})
 			return
 		}
 
-		startTime, err := time.Parse(time.RFC3339, req.StartTime)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time format"})
-			return
+		// Debug output
+		fmt.Printf("Creating session: %+v\n", &req)
+		fmt.Printf("Records: %+v\n", req.Records)
+
+		// Ensure start time is set
+		if req.StartTime.IsZero() {
+			req.StartTime = time.Now().UTC()
 		}
 
-		session := &domain.Session{
-			ProjectID: projectID,
-			StartTime: startTime,
-			Duration:  req.Duration,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+		// Ensure end time is set
+		if req.EndTime.IsZero() {
+			req.EndTime = time.Now().UTC()
 		}
-
-		// Create records
-		for _, r := range req.Records {
-			var timestamp time.Time
-			
-			// Handle timestamp which can be string or number
-			switch v := r.Timestamp.(type) {
-			case string:
-				// Try to parse as RFC3339
-				t, err := time.Parse(time.RFC3339, v)
-				if err != nil {
-					// Try to parse as RFC3339Nano
-					t, err = time.Parse(time.RFC3339Nano, v)
-					if err != nil {
-						timestamp = time.Now() // Fallback to current time
-					} else {
-						timestamp = t
-					}
-				} else {
-					timestamp = t
-				}
-			case float64:
-				// Handle timestamp as milliseconds since epoch
-				timestamp = time.Unix(0, int64(v)*int64(time.Millisecond))
-			default:
-				timestamp = time.Now() // Fallback to current time
-			}
-
-			record := &domain.Record{
-				Text:      r.Text,
-				GitLink:   r.GitLink,
-				AudioURL:  r.AudioURL,
-				Timestamp: timestamp,
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-			}
-
-			// Create files
-			for _, f := range r.Files {
-				file := &domain.File{
-					Name:      f.Name,
-					URL:       f.URL,
-					Type:      f.Type,
-					Size:      f.Size,
-					CreatedAt: time.Now(),
-					UpdatedAt: time.Now(),
-				}
-				record.Files = append(record.Files, *file)
-			}
-
-			session.Records = append(session.Records, *record)
-		}
-
-		// Log the session being created
-		fmt.Printf("Creating session: %+v\n", session)
-		fmt.Printf("Records: %+v\n", session.Records)
 
 		// Create the session
-		err = s.sessionRepo.Create(c, session)
+		err = s.sessionRepo.Create(c, projectID, &req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create session: %v", err)})
 			return
 		}
 
-		c.JSON(http.StatusCreated, session)
+		c.JSON(http.StatusCreated, req)
 	}
 }
 

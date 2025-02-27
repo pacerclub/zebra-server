@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ZigaoWang/zebra-server/internal/domain"
@@ -17,7 +18,7 @@ func NewSessionRepository(db *gorm.DB) *SessionRepository {
 	return &SessionRepository{db: db}
 }
 
-func (r *SessionRepository) Create(ctx context.Context, session *domain.Session) error {
+func (r *SessionRepository) Create(ctx context.Context, projectID uuid.UUID, session *domain.Session) error {
 	// Start a transaction
 	tx := r.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
@@ -28,6 +29,9 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 	if session.ID == uuid.Nil {
 		session.ID = uuid.New()
 	}
+	
+	// Set project ID
+	session.ProjectID = projectID
 
 	// Set timestamps
 	now := time.Now()
@@ -41,8 +45,34 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 		session.EndTime = now
 	}
 
-	// Create the session first
-	if err := tx.Create(session).Error; err != nil {
+	// Calculate duration in seconds
+	if session.Duration == 0 {
+		// Use UTC times to avoid timezone issues
+		startTimeUTC := session.StartTime.UTC()
+		endTimeUTC := session.EndTime.UTC()
+		
+		// Print times for debugging
+		fmt.Printf("StartTime: %v, EndTime: %v\n", startTimeUTC, endTimeUTC)
+		
+		// Calculate duration in seconds
+		duration := endTimeUTC.Sub(startTimeUTC).Seconds()
+		session.Duration = int64(duration)
+		
+		fmt.Printf("Calculated duration: %d seconds\n", session.Duration)
+	}
+
+	// Create the session first without the records
+	sessionCopy := domain.Session{
+		ID:        session.ID,
+		ProjectID: session.ProjectID,
+		StartTime: session.StartTime,
+		EndTime:   session.EndTime,
+		Duration:  session.Duration,
+		CreatedAt: session.CreatedAt,
+		UpdatedAt: session.UpdatedAt,
+	}
+	
+	if err := tx.Create(&sessionCopy).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -66,7 +96,20 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 			record.Timestamp = now
 		}
 
-		if err := tx.Create(record).Error; err != nil {
+		// Create a copy of the record without the files
+		recordCopy := domain.Record{
+			ID:        record.ID,
+			SessionID: record.SessionID,
+			Text:      record.Text,
+			GitLink:   record.GitLink,
+			AudioURL:  record.AudioURL,
+			AudioData: record.AudioData,
+			Timestamp: record.Timestamp,
+			CreatedAt: record.CreatedAt,
+			UpdatedAt: record.UpdatedAt,
+		}
+
+		if err := tx.Create(&recordCopy).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -85,7 +128,20 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.Session)
 			}
 			file.UpdatedAt = now
 
-			if err := tx.Create(file).Error; err != nil {
+			// Create a copy of the file
+			fileCopy := domain.File{
+				ID:        file.ID,
+				RecordID:  file.RecordID,
+				Name:      file.Name,
+				URL:       file.URL,
+				Type:      file.Type,
+				Size:      file.Size,
+				Data:      file.Data,
+				CreatedAt: file.CreatedAt,
+				UpdatedAt: file.UpdatedAt,
+			}
+
+			if err := tx.Create(&fileCopy).Error; err != nil {
 				tx.Rollback()
 				return err
 			}
